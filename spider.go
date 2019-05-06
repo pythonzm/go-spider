@@ -11,16 +11,33 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
+type MyRoundTripper struct {
+	rt http.RoundTripper
+}
+
+func (mrt MyRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	r.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.108 Safari/537.36")
+	return mrt.rt.RoundTrip(r)
+}
+
 func GetMatches(url string, expr string) [][]string {
-	resp, err := http.Get(url)
-	if err != nil {
-		panic(fmt.Sprintf("Get failed,err: %s", err))
+	client := &http.Client{
+		Timeout:   time.Second * 10,
+		Transport: MyRoundTripper{rt: http.DefaultTransport},
 	}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		fmt.Printf("Get %s failed, err: %s\n", url, err)
+		return nil
+	}
+
 	defer func() {
 		if e := resp.Body.Close(); e != nil {
-			fmt.Printf("body close failed,err: %s", e)
+			fmt.Printf("body close failed,err: %s\n", e)
 			return
 		}
 	}()
@@ -91,10 +108,12 @@ func DownloadGif(gifInfo map[string]string, wg *sync.WaitGroup, filePath string)
 	bytes, _ := ioutil.ReadAll(resp.Body)
 
 	var fileName string
+	title := strings.Replace(gifInfo["title"], "https://", "", -1)
+
 	if strings.HasSuffix(gifInfo["title"], ".gif") {
-		fileName = filePath + gifInfo["title"]
+		fileName = filePath + title
 	} else {
-		fileName = filePath + gifInfo["title"] + ".gif"
+		fileName = filePath + title + ".gif"
 	}
 
 	if err := ioutil.WriteFile(fileName, bytes, 0664); err != nil {
